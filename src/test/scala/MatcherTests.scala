@@ -57,4 +57,24 @@ class MatcherTests extends AnyFunSuite {
     val exp = Parser.parseExpression("""(AND "sim*" "tes*" (NOT "interpol"))""").get
     assert(Matcher.matchedText("simple inter test", exp))
   }
+
+  test("Matcher test 12") {
+    val exp = Parser.parseExpression("""(AND "sim*" "tes*")""").get
+    assert(Matcher.matchedText("simple inter Test case ignored by default", exp))
+  }
+
+  test("Matcher test 12.1") {
+    val exp = Parser.parseExpression("""(AND "sim*" "TES*")""").get
+    assert(Matcher.matchedText("simple inter test case ignored by default", exp))
+  }
+
+  test("Matcher test 13") {
+    val exp = Parser.parseExpression("""(AND "sim*" (CS "tes*"))""").get
+    assert(!Matcher.matchedText("simple inter Test ", exp))
+  }
+
+  test("Matcher test 13.1") {
+    val exp = Parser.parseExpression("""(AND "sim*" (CS "Tes*"))""").get
+    assert(Matcher.matchedText("simple inter Test with case sensitive", exp))
+  }
 }

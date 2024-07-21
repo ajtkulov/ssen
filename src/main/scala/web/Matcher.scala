@@ -1,7 +1,8 @@
 package web
 
 case class TextIR(value: String) {
-  lazy val norm: Vector[String] = Normalizer.norm(value)
+  lazy val normCaseSensitive: Vector[String] = Normalizer.norm(value)
+  lazy val normCaseIgnored: Vector[String] = normCaseSensitive.map(_.toUpperCase)
 }
 
 case class TermPair(pattern: String, wildCard: Boolean) {
@@ -36,13 +37,14 @@ object Matcher {
       case Expression(Left(FunctionCall(fn, args))) if fn.value.toUpperCase == "AND" => args.forall(arg => matched(text, arg))
       case Expression(Left(FunctionCall(fn, args))) if fn.value.toUpperCase == "OR" => args.exists(arg => matched(text, arg))
       case Expression(Left(FunctionCall(fn, args))) if fn.value.toUpperCase == "NOT" => !matched(text, args.head)
-      case Expression(Right(term)) => termMatch(text, TermIR(term.normValue)).isDefined
+      case Expression(Left(FunctionCall(FunctionName("CS"), List(Expression(Right(term)))))) => termMatch(text.normCaseSensitive, TermIR(term.normValueCaseSensitive)).isDefined
+      case Expression(Right(term)) => termMatch(text.normCaseIgnored, TermIR(term.normValueCaseIgnored)).isDefined
       case _ => false
     }
   }
 
-  def termMatch(text: TextIR, pattern: TermIR): Option[Int] = {
-    text.norm.sliding(pattern.norm.size).zipWithIndex.find {
+  def termMatch(text: Vector[String], pattern: TermIR): Option[Int] = {
+    text.sliding(pattern.norm.size).zipWithIndex.find {
       case (window, _) => windowMatch(window, pattern)
     }.map(_._2)
   }

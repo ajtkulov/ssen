@@ -24,12 +24,16 @@ object Parser extends RegexParsers {
 sealed trait SearchDSL {}
 
 case class Term(private val value: String) extends SearchDSL {
-  val normValue: String = {
+  val normValueCaseSensitive: String = {
     if (value.startsWith("\"")) {
       value.drop(1).dropRight(1)
     } else {
       value
     }
+  }
+
+  val normValueCaseIgnored: String = {
+    normValueCaseSensitive.toUpperCase
   }
 }
 
@@ -40,7 +44,7 @@ case class Expression(value: Either[FunctionCall, Term]) extends SearchDSL {}
 case class FunctionCall(funcCall: FunctionName, arguments: List[Expression]) extends SearchDSL {}
 
 object ExpressionValidator {
-  lazy val funcNames = Set("OR", "AND", "NOT")
+  lazy val funcNames = Set("OR", "AND", "NOT", "CS")
 
   def validateArg(value: String): Either[String, Unit] = {
     val split = value.split(" ").filter(_.nonEmpty)
@@ -67,6 +71,8 @@ object ExpressionValidator {
       case FunctionCall(f, a) =>
         val notCheck = if (f.value.toUpperCase == "NOT" && a.length != 1) {
           Left("Not function must have only one argument")
+        } else if (f.value.toUpperCase == "CS" && a.length != 1 && !a.head.isInstanceOf[Expression] && !a.head.value.isRight) {
+          Left("Case Ignore function must have only one argument with Term/just_a_string argument")
         } else {
           Right()
         }
