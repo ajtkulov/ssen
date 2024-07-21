@@ -44,7 +44,6 @@ object ExpressionValidator {
 
   def validateArg(value: String): Either[String, Unit] = {
     val split = value.split(" ").filter(_.nonEmpty)
-    println(split.mkString(" "))
     if (split.forall(arg => arg.count(_ == '*') == 0 || (arg.count(_ == '*') == 1 && arg.endsWith("*")))) {
       Right()
     } else {
