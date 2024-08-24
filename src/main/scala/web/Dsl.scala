@@ -4,9 +4,16 @@ import scala.util.parsing.combinator.RegexParsers
 import scala.language.postfixOps
 
 object Parser extends RegexParsers {
-  def term: Parser[Term] = """\b\w+\b|\"[^\"]+\"""".r ^^ { x => Term(x) }
+  def term: Parser[Term] =
+    """\b[\*\w]+\b|\"[^\"]+\"""".r ^^ { x =>
+      if (x.head == '"' && x.last == '"') {
+        Term(x.drop(1).dropRight(1))
+      } else {
+        Term(x)
+      }
+    }
 
-  def functionName: Parser[FunctionName] = "\\w+".r ^^ { x => FunctionName(x) }
+  def functionName: Parser[FunctionName] = "\\w+".r ^^ { x => FunctionName(x.toUpperCase) }
 
   def expression: Parser[Expression] = functionCall ^^ { x => Expression(Left(x)) } | term ^^ { x => Expression(Right(x)) }
 
@@ -19,11 +26,19 @@ object Parser extends RegexParsers {
   def parseExpression(value: String): ParseResult[Expression] = {
     parse(expression, value)
   }
+
+  def parseStrict(value: String)(implicit validator: ExpressionValidator): Expression = {
+    val exp = parseExpression(value).get
+    val valid = validator.validate(exp)
+    assert(valid.isRight)
+
+    exp
+  }
 }
 
 sealed trait SearchDSL {}
 
-case class Term(private val value: String) extends SearchDSL {
+case class Term(value: String) extends SearchDSL {
   val normValueCaseSensitive: String = {
     if (value.startsWith("\"")) {
       value.drop(1).dropRight(1)
@@ -43,27 +58,28 @@ case class Expression(value: Either[FunctionCall, Term]) extends SearchDSL {}
 
 case class FunctionCall(funcCall: FunctionName, arguments: List[Expression]) extends SearchDSL {}
 
-object ExpressionValidator {
-  lazy val funcNames = Set("OR", "AND", "NOT", "CS")
+trait ExpressionValidator {
+  def funcNames: Set[String]
 
-  def validateArg(value: String): Either[String, Unit] = {
-    val split = value.split(" ").filter(_.nonEmpty)
+  def validateArg(value: Term): Either[String, SearchDSL] = {
+    val split = value.value.split(" ").filter(_.nonEmpty)
     if (split.forall(arg => arg.count(_ == '*') == 0 || (arg.count(_ == '*') == 1 && arg.endsWith("*")))) {
-      Right()
+      Right(value)
     } else {
       Left("Asterisk allowed only at the end of the word")
     }
   }
 
-  def validate(searchDSL: SearchDSL): Either[String, Unit] = {
+  def validate(searchDSL: SearchDSL): Either[String, SearchDSL] = {
     searchDSL match {
-      case Term(_) =>
-        Right()
-      case FunctionName(value) => if (funcNames.contains(value.toUpperCase)) {
-        Right()
-      } else {
-        Left(s"Unknown function name: ${value}")
-      }
+      case term@Term(_) =>
+        validateArg(term)
+      case FunctionName(value) =>
+        if (funcNames.contains(value.toUpperCase)) {
+          Right(searchDSL)
+        } else {
+          Left(s"Unknown function name: ${value}")
+        }
 
       case Expression(Left(f)) => validate(f)
       case Expression(Right(f)) => validate(f)
@@ -74,12 +90,19 @@ object ExpressionValidator {
         } else if (f.value.toUpperCase == "CS" && a.length != 1 && !a.head.isInstanceOf[Expression] && !a.head.value.isRight) {
           Left("Case Ignore function must have only one argument with Term/just_a_string argument")
         } else {
-          Right()
+          Right(searchDSL)
         }
 
-        val all: List[Either[String, Unit]] = a.map(x => validate(x)) :+ validate(f) :+ notCheck
+        val all: List[Either[String, SearchDSL]] = a.map(x => validate(x)) :+ validate(f) :+ notCheck
         CollectionUtils.combine(all)
     }
   }
+}
 
+object BasicExpressionValidator extends ExpressionValidator {
+  lazy val funcNames: Set[String] = Set("OR", "AND", "NOT", "CS")
+}
+
+object ElasticExpressionValidator extends ExpressionValidator {
+  lazy val funcNames: Set[String] = Set("OR", "AND", "NOT")
 }

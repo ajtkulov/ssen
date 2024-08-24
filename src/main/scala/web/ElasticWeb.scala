@@ -3,10 +3,11 @@ package web
 import org.slf4j.LoggerFactory
 import ujson.Value
 
-object Web extends cask.MainRoutes {
+object ElasticWeb extends cask.MainRoutes {
 
   val logger = LoggerFactory.getLogger(getClass)
-  override def port: Int = 8081
+
+  override def port: Int = 8082
 
   override def host: String = "0.0.0.0"
 
@@ -15,17 +16,11 @@ object Web extends cask.MainRoutes {
     "Hello World!"
   }
 
-  @cask.staticFiles("/static/:path")
-  def staticFileRoutes(path: String) = "static/" + path
-
-  @cask.postJson("/search")
-  def search(expression: ujson.Value, date: ujson.Value): Value = {
+  @cask.postJson("/convert")
+  def convert(expression: ujson.Value): Value = {
     val str = expression.str
-    val d = date.str
-
 
     logger.debug(s"expression: ${str}")
-    logger.debug(s"date: ${date}")
 
     val expParse: Parser.ParseResult[Expression] = Parser.parseExpression(str)
 
@@ -35,19 +30,14 @@ object Web extends cask.MainRoutes {
 
     logger.debug(s"Parsed expression: ${exp}")
 
-    val res: Vector[TgPost] = CH.tgEager(d, exp).sortBy(x => (x.channel, x.id))
-
-    logger.debug(s"Result size: ${res.size}")
-
     if (valid.isLeft) {
       ujson.Obj("error" -> valid.left.get)
     } else {
       ujson.Obj(
-        "result" -> ujson.Arr(res.map(_.toJson)),
+        "result" -> ElasticTransformation.transform(exp)
       )
     }
   }
 
-  CH.main(Array())
   initialize()
 }
